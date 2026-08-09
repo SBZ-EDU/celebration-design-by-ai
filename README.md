@@ -1,72 +1,41 @@
 # 🎉 جشن‌ساز — Celebration Design by AI
 
-**وب‌سایت کامل استودیو طراحی و اجرای جشن با هوش مصنوعی** (فارسی، راست‌به‌چپ)
+**وب‌سایت استودیو طراحی و اجرای جشن با هوش مصنوعی** (فارسی، RTL، تم جشن بنفش-طلایی)
 
-نسخهٔ جدیدی از خانوادهٔ پروژه‌های «Websites by AI» — این‌بار در حوزهٔ **طراحی جشن و رویداد** (تولد، نامزدی، عروسی، یلدا، رویداد سازمانی، سیسمونی و…).
+> Live: **https://celebration-design-by-ai.pages.dev**  
+> GitHub: **https://github.com/SBZ-EDU/celebration-design-by-ai**  
+> Brand: جشن‌ساز | Stack: React 18 + Vite 5 + Tailwind 3 + TypeScript  
+> Deployed: Cloudflare Pages
+
+نسخهٔ جدیدی از خانوادهٔ «Websites by AI» — حوزهٔ **طراحی جشن و رویداد**
 
 ## ✨ امکانات
+- 🤖 طراح هوشمند: مناسبت + سبک + مهمان → تم، پالت رنگ، دکور، بودجه
+- 💬 چت فارسی rule-based
+- 🎁 پکت‌ها: رویا / ستاره / افسانه VIP / طراحی مفهومی AI
+- 📸 گالری، 📖 مجله، FAQ، فرم رزرو
 
-- **لندینگ کامل فارسی/RTL** با فونت وزیرمتن و تم جشن (بنفش-طلایی روی زمینهٔ تیره)
-- **🤖 طراح هوشمند جشن:** انتخاب مناسبت + سبک + تعداد مهمان → کانسپت اختصاصی با نام تم، پالت رنگ، لیست دکور، **برآورد بودجهٔ آنی** و نکتهٔ حرفه‌ای
-- **💬 دستیار چت هوشمند:** پاسخ‌گوی فارسی بر اساس پایگاه دانش داخلی (قیمت‌ها، رزرو، شهرها، سیاست لغو و…) — بدون نیاز به کلید API؛ قابل اتصال به مدل واقعی با متغیر محیطی
-- **🎁 پکت‌های شفاف** (رویا / ستاره / افسانه VIP / طراحی مفهومی AI) با قیمت تومانی
-- **📸 گالری نمونه‌کار فیلترشونده** با ۶ پروژهٔ واقعی-نما
-- **📖 مجلهٔ جشن‌ساز** با ۴ مقالهٔ کامل (مودال مطالعه)
-- **📞 فرم رزرو** با اتصال دوطرفه به طراح هوشمند (بریف طراحی به‌صورت خودکار داخل پیام فرم پر می‌شود)، ذخیرهٔ محلی سرنخ‌ها و وب‌هوک اختیاری
-- سوالات متداول آکاردئونی، نظرات مشتریان، آمار، سئوی متای فارسی
-
-## 🛠 تکنولوژی
-
-React 18 + TypeScript + Vite 5 + Tailwind CSS 3 — همان پشتهٔ آشنا، سبک‌تر و سریع‌تر برای دیپلوی روی Vercel / Cloudflare Pages.
-
-## 🚀 اجرای محلی
-
+## 🚀 اجرا
 ```bash
 npm install
 npm run dev
-# → http://localhost:3000
+npm run build
 ```
 
-## 📦 بیلد و دیپلوی
-
-```bash
-npm run build     # خروجی در dist/
-npm run preview   # پیش‌نمایش بیلد
+## ☁️ Cloudflare Pages
+- Project: `celebration-design-by-ai`
+- Build: `npm run build` → `dist`
 ```
-
-- **Vercel:** Import repository → Framework: Vite → Deploy
-- **Cloudflare Pages:** Build command: `npm run build` • Output: `dist`
-
-## ⚙️ متغیرهای محیطی (اختیاری)
-
-`.env.example` را ببینید. بدون هیچ کلیدی کار می‌کند؛ برای اتصال دستیار/chatform به سرویس‌های واقعی:
-
-```bash
-VITE_OPENAI_API_KEY=...        # اتصال دستیار چت به LLM واقعی
-VITE_CONTACT_WEBHOOK=...       # ارسال فرم تماس به Formspree/وب‌هوک
+npx wrangler pages deploy dist --project-name=celebration-design-by-ai
 ```
+- Auto Deploy: `.github/workflows/deploy.yml` نیاز به Secrets دارد
 
-## 🗂 ساختار
+### GitHub Secrets
+در Settings → Secrets → Actions اضافه کن:
+- `CLOUDFLARE_API_TOKEN` (توکن ancient-fire-1864 که دادی)
+- `CLOUDFLARE_ACCOUNT_ID` = `5b456a2b43bb367410c50b35b9e7f71f`
 
-```
-src/lib/content.ts          ← تمام داده‌ها (خدمات، پکت‌ها، موتور طراح، پایگاه دانش چت)
-src/components/
-  ├─ Header.tsx             ← ناوبری چسبان + منوی موبایل
-  ├─ Hero.tsx               ← هیرو + آمار
-  ├─ Services.tsx           ← ۸ خدمت جشن
-  ├─ AiDesigner.tsx         ← ⭐ طراح هوشمند (موتور کانسپت‌ساز)
-  ├─ Packages.tsx           ← پکت‌ها و قیمت شفاف
-  ├─ Gallery.tsx            ← گالری فیلترشونده
-  ├─ Testimonials.tsx       ← نظرات مشتریان
-  ├─ Blog.tsx               ← مجله + مودال مطالعه
-  ├─ Faq.tsx                ← سوالات متداول
-  ├─ Contact.tsx            ← فرم رزرو + اطلاعات تماس
-  ├─ Footer.tsx             ← فوتر
-  └─ ChatAssistant.tsx      ← دستیار چت شناور
-public/fonts/               ← فونت وزیرمتن (۴ وزن)
-public/images/              ← تصاویر تولیدشده با AI
-```
+## R2 نکته
+AccessKeyID دادی ولی SecretAccessKey جا افتاد و R2 هنوز Enable نیست. برای آپلود عکس، R2 را از داشبورد فعال کن و Secret را بده.
 
-## 📄 لایسنس
-
-MIT — آزاد برای استفاده و تغییر.
+MIT License
