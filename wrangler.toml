@@ -1,0 +1,8 @@
+name = "celebration-design-by-ai"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-08-09"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "neginjam-db"
+database_id = "ab983838-f871-4c5e-abbc-a838c4d1b560"

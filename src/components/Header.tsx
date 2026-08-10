@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BRAND } from '../lib/content'
+import { useAuth } from '../lib/authContext'
 
 const LINKS = [
   { href: '#services', label: 'خدمات' },
@@ -10,9 +11,10 @@ const LINKS = [
   { href: '#faq', label: 'سوالات' },
 ]
 
-export default function Header() {
+export default function Header({onAuthClick}:{onAuthClick?:()=>void}) {
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
+  const { user, isAdmin, logout } = useAuth()
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24)
@@ -49,12 +51,21 @@ export default function Header() {
           ))}
         </nav>
 
-        <div className="hidden items-center gap-3 lg:flex">
+        <div className="hidden items-center gap-2 lg:flex">
+          {user ? (
+            <>
+              <span className="text-xs text-white/60">{user.name} ({user.role})</span>
+              {isAdmin && <a href="#admin" className="chip !bg-fuchsia-500 !text-white">ادمین</a>}
+              <button onClick={logout} className="btn-ghost !px-3 !py-2 text-xs">خروج</button>
+            </>
+          ) : (
+            <button onClick={onAuthClick} className="btn-ghost !px-4 !py-2 text-sm">ورود</button>
+          )}
           <a href={`tel:${BRAND.phoneLink}`} className="text-sm font-bold text-amber-300" dir="ltr">
             {BRAND.phone}
           </a>
           <a href="#contact" className="btn-primary !px-5 !py-2.5 text-sm">
-            رزرو مشاوره رایگان
+            رزرو مشاوره
           </a>
         </div>
 
@@ -80,7 +91,17 @@ export default function Header() {
                 {l.label}
               </a>
             ))}
-            <a href="#contact" onClick={() => setOpen(false)} className="btn-primary mt-2 text-sm">
+            <div className="flex gap-2 mt-2">
+              {user ? (
+                <>
+                  <a href="#admin" onClick={()=>setOpen(false)} className="btn-primary flex-1 text-sm">پنل {user.role}</a>
+                  <button onClick={()=>{logout(); setOpen(false)}} className="btn-ghost flex-1 text-sm">خروج</button>
+                </>
+              ) : (
+                <button onClick={()=>{onAuthClick?.(); setOpen(false)}} className="btn-primary flex-1 text-sm">ورود / ثبت نام</button>
+              )}
+            </div>
+            <a href="#contact" onClick={() => setOpen(false)} className="btn-ghost mt-2 text-sm text-center">
               رزرو مشاوره رایگان 🎉
             </a>
           </div>
