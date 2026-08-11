@@ -24,8 +24,13 @@ function MainApp() {
     const hash = window.location.hash
     if(hash==='#admin') setView('admin')
     const onHash = ()=> setView(window.location.hash==='#admin' ? 'admin' : 'home')
+    const onOpenAuth = ()=> setShowAuth(true)
     window.addEventListener('hashchange', onHash)
-    return ()=> window.removeEventListener('hashchange', onHash)
+    window.addEventListener('open-auth' as any, onOpenAuth)
+    return ()=> {
+      window.removeEventListener('hashchange', onHash)
+      window.removeEventListener('open-auth' as any, onOpenAuth)
+    }
   },[])
 
   return (

@@ -3,7 +3,7 @@ import { apiGetLeads, apiUpdateLead, apiDeleteLead, apiGetPosts, apiCreatePost, 
 import { useAuth } from '../lib/authContext'
 
 export default function AdminPanel() {
-  const { isAdmin } = useAuth()
+  const { user, isAdmin } = useAuth()
   const [tab, setTab] = useState<'leads'|'posts'|'bots'>('leads')
   const [leads, setLeads] = useState<any[]>([])
   const [posts, setPosts] = useState<any[]>([])
@@ -30,7 +30,35 @@ export default function AdminPanel() {
     if(tab==='posts') loadPosts()
   },[tab, isAdmin])
 
-  if(!isAdmin) return <div className="container-x py-20 text-center text-white/60">دسترسی فقط برای ادمین (admin@jashnsaz.ir)</div>
+  if(!user) {
+    return (
+      <div className="container-x py-20 text-center">
+        <div className="glass-card max-w-md mx-auto p-8">
+          <div className="text-5xl mb-4">🔒</div>
+          <h3 className="text-xl font-bold">ورود به پنل ادمین</h3>
+          <p className="text-white/60 mt-2 text-sm leading-7">برای مدیریت پست‌ها و لیدها باید اول وارد شوید.<br/>ادمین: admin@jashnsaz.ir / admin123</p>
+          <div className="mt-6 flex gap-2 justify-center">
+            <a href="#" onClick={e=>{e.preventDefault(); window.location.hash=''; window.dispatchEvent(new CustomEvent('open-auth'))}} className="btn-primary">ورود / ثبت نام</a>
+            <a href="#" onClick={e=>{e.preventDefault(); window.location.hash=''}} className="btn-ghost">← بازگشت به سایت</a>
+          </div>
+        </div>
+      </div>
+    )
+  }
+  if(!isAdmin) {
+    return (
+      <div className="container-x py-20 text-center">
+        <div className="glass-card max-w-md mx-auto p-8">
+          <div className="text-5xl mb-4">⛔️</div>
+          <h3 className="text-xl font-bold">دسترسی فقط برای ادمین</h3>
+          <p className="text-white/60 mt-2 text-sm">شما با {user.email} وارد شدید (نقش: {user.role})<br/>فقط admin@jashnsaz.ir اجازه دارد</p>
+          <div className="mt-6">
+            <a href="#" onClick={e=>{e.preventDefault(); window.location.hash=''}} className="btn-ghost">← بازگشت به سایت</a>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="container-x py-10" dir="rtl">
