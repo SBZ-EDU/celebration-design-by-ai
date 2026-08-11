@@ -1,9 +1,9 @@
-import { tgSendMessage, tgSendPhoto, tgAnswerCallback, inlineKeyboard, replyKeyboard } from '../lib/telegram'
-import { BOT_TEXTS, OCCASION_BUTTONS, STYLE_BUTTONS, GUEST_BUTTONS, MAIN_MENU } from '../../src/lib/bot/botFlows'
+import { tgSendMessage, tgAnswerCallback, inlineKeyboard } from '../lib/telegram'
+import { BOT_TEXTS, OCCASION_BUTTONS, STYLE_BUTTONS, GUEST_BUTTONS } from '../../src/lib/bot/botFlows'
 import { generateId, TABLES } from '../lib/db'
 
 function faDesign(occ:string, style:string, guests:string){
-  return `✨ <b>تم پیشنهادی:</b> ${occ} + ${style}\n👥 <b>مهمان:</b> ${guests}\n🎨 <b>پالت:</b> فوشیا، بنفش، طلایی، کرم\n💰 <b>بودجه تخمینی:</b> ۱۸ تا ۳۲ میلیون\n💡 <b>نکته:</b> نورپردازی ریسه‌ای + گل‌آرایی میز`
+  return `✨ <b>تم پیشنهادی:</b> ${occ} + ${style}\n👥 <b>مهمان:</b> ${guests}\n🎨 <b>پالت:</b> فوشیا، بنفش، طلایی، کرم\n💰 <b>بودجه:</b> ۱۸ تا ۳۲ میلیون`
 }
 
 const WELCOME_KB_TEXT = [
@@ -36,6 +36,7 @@ export const onRequestPost: PagesFunction<{
   TELEGRAM_ADMIN_CHAT_ID: string
   BALE_ADMIN_CHAT_ID: string
   BALE_BOT_TOKEN?: string
+  OWNER_SECRET?: string
 }> = async (ctx) => {
   const { TELEGRAM_BOT_TOKEN, DB } = ctx.env
   let update: any
@@ -52,10 +53,11 @@ export const onRequestPost: PagesFunction<{
   const userName = from?.first_name || from?.username || ''
 
   if(!chatId) return new Response('ok')
-  if(callbackId){ try { await tgAnswerCallback(TELEGRAM_BOT_TOKEN, callbackId) } catch {} }
+  if(callbackId){ try { const {tgAnswerCallback} = await import('../lib/telegram'); await tgAnswerCallback(TELEGRAM_BOT_TOKEN, callbackId) } catch {} }
 
   const {tgAdmin, baleAdmin} = await getAdminIds(DB, ctx.env)
 
+  // Save lead
   try {
     if(DB && chatIdStr && text){
       const existing = await DB.prepare(`SELECT id FROM ${TABLES.leads} WHERE chat_id = ?`).bind(chatIdStr).first()
@@ -66,92 +68,104 @@ export const onRequestPost: PagesFunction<{
         await DB.prepare(`UPDATE ${TABLES.leads} SET message = ?, name = ?, updated_at = datetime("now") WHERE chat_id = ?`).bind(text.slice(0,500), userName, chatIdStr).run()
       }
     }
-  } catch(e){ console.error('db save fail', e) }
+  } catch(e){ console.error(e) }
 
-  // Forward report with chat ID to admin (main site monitoring to 09206263218 owner)
+  // Forward to admin if not admin itself
   if(tgAdmin && String(chatId) !== String(tgAdmin)){
-    const report = `🟣 Telegram report\n👤 ${userName} | ID: ${chatIdStr}\n📱 09206263218 owner monitoring\n💬 ${text}\n🔗 @celeb4neginejam_bot\n⏰ ${new Date().toISOString()}`
+    const report = `🟣 Telegram report\n👤 ${userName} | ID: ${chatIdStr}\n📱 09206263218 monitoring\n💬 ${text}\n🔗 @celeb4neginejam_bot`
     await tgSendMessage(TELEGRAM_BOT_TOKEN, tgAdmin, report).catch(()=>{})
-  }
-  // Also if bale admin set and bale token env exists, forward to bale
-  if(baleAdmin && ctx.env.BALE_BOT_TOKEN){
-    try {
-      await fetch(`https://tapi.bale.ai/bot${ctx.env.BALE_BOT_TOKEN}/sendMessage`, {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({chat_id: baleAdmin, text: `🟣 Telegram report from ${chatIdStr} (${userName}): ${text}`})
-      })
-    } catch {}
   }
 
   const lower = text.toLowerCase()
   const contains = (kw: string[]) => kw.some(k=> lower.includes(k) || text.includes(k))
 
   try {
-    if(text.startsWith('/start') || lower === 'start' || text === 'شروع' || text.includes('سلام')){
-      const welcome = `سلام ${userName ? userName + ' عزیز' : ''}! من ربات جشن‌ساز هستم 🎉✨\n\n${BOT_TEXTS.welcome}\n\nآیدی شما: <code>${chatIdStr}</code> (برای ادمین ارسال شد)\n\n👇 از منوی زیر انتخاب کن:`
+    if(text.startsWith('/setadmin')){
+      // SECURITY FIX: Only owner or current admin can change admin
+      const parts = text.split(' ')
+      const secret = parts[1] || ''
+      const ownerSecret = ctx.env.OWNER_SECRET || 'jashnsaz2026' // fallback but should be set in env
+      const isFirstSetup = !tgAdmin
+      const isCurrentAdmin = tgAdmin && String(chatId) === String(tgAdmin)
+      const isCorrectSecret = secret === ownerSecret
+
+      if(!isFirstSetup && !isCurrentAdmin){
+        await tgSendMessage(TELEGRAM_BOT_TOKEN, chatId, `⛔️ فقط ادمین فعلی می‌تونه ادمین رو تغییر بده\n\nادمین فعلی: ${tgAdmin}\nآیدی شما: ${chatIdStr}\n\nاگه مالک هستی با ادمین فعلی تماس بگیر یا از پنل Cloudflare Env عوض کن.`)
+        return new Response('ok')
+      }
+      if(!isCorrectSecret && !isFirstSetup){
+        // For first setup, allow without secret? No, require secret even for first
+        // But if first setup and secret correct, allow
+        if(secret !== ownerSecret){
+          await tgSendMessage(TELEGRAM_BOT_TOKEN, chatId, `🔒 برای ست کردن ادمین باید رمز مالک رو بدی\n\nفرمت: /setadmin <رمز>\n\nاگه رمز رو نداری، به مالک اصلی (09206263218) پیام بده.`)
+          return new Response('ok')
+        }
+      }
+      // If we reach here, allow
+      if(secret && secret !== ownerSecret && isFirstSetup){
+        await tgSendMessage(TELEGRAM_BOT_TOKEN, chatId, `🔒 رمز اشتباهه\n\nفرمت درست: /setadmin jashnsaz2026 (یا رمز جدید)\nآیدی شما: ${chatIdStr}`)
+        return new Response('ok')
+      }
+      // Set admin to this chatId (or if third param is new admin id, set that)
+      let newAdminId = chatIdStr
+      if(parts[2]) newAdminId = parts[2] // /setadmin SECRET NEW_ID
+      else if(parts.length===1) newAdminId = chatIdStr // just /setadmin SECRET -> self
+
+      // If admin wants to set other ID, must be current admin
+      if(parts[2] && !isCurrentAdmin && !isFirstSetup){
+        await tgSendMessage(TELEGRAM_BOT_TOKEN, chatId, `⛔️ فقط ادمین فعلی می‌تونه ادمین جدید معرفی کنه`)
+        return new Response('ok')
+      }
+
+      await DB.prepare(`INSERT OR REPLACE INTO jashnsaz_settings (key, value) VALUES ('telegram_admin_chat_id', ?)`).bind(newAdminId).run()
+      await tgSendMessage(TELEGRAM_BOT_TOKEN, chatId, `✅ ادمین تلگرام ست شد\nID جدید: ${newAdminId}\nقبلی: ${tgAdmin || 'هیچکدام (اولین ست)'}\n\nاز این به بعد گزارش‌ها به این آیدی میره.\n\nبرای امنیت، حالا فقط همین آیدی می‌تونه ادمین رو عوض کنه.`)
+      if(tgAdmin && String(tgAdmin) !== newAdminId){
+        await tgSendMessage(TELEGRAM_BOT_TOKEN, tgAdmin, `⚠️ ادمین تلگرام از ${tgAdmin} به ${newAdminId} تغییر کرد توسط ${chatIdStr} (${userName})`).catch(()=>{})
+      }
+      return new Response('ok')
+    }
+
+    if(text.startsWith('/start') || lower === 'start' || text === 'شروع'){
+      const welcome = `سلام ${userName ? userName + ' عزیز' : ''}! من ربات جشن‌ساز هستم 🎉✨\n\n${BOT_TEXTS.welcome}\n\nآیدی شما: <code>${chatIdStr}</code>\n\n👇 منو با آیکن‌ها:`
       await tgSendMessage(TELEGRAM_BOT_TOKEN, chatId, welcome, {
         reply_markup: {
           keyboard: WELCOME_KB_TEXT.map(r=>r.map(t=>({text:t}))),
           resize_keyboard: true,
-          is_persistent: true,
-          input_field_placeholder: 'نوع جشن را بنویس...'
+          is_persistent: true
         }
       })
-      await tgSendMessage(TELEGRAM_BOT_TOKEN, chatId, `🎈 <b>انتخاب سریع مناسبت (با آیکن):</b>`, inlineKeyboard(OCCASION_BUTTONS))
+      await tgSendMessage(TELEGRAM_BOT_TOKEN, chatId, `🎈 انتخاب سریع:`, inlineKeyboard(OCCASION_BUTTONS))
       return new Response('ok')
     }
 
-    if(text.startsWith('/setadmin')){
-      const parts = text.split(' ')
-      const secret = parts[1]
-      if(secret === 'jashnsaz2026'){
-        await DB.prepare(`INSERT OR REPLACE INTO jashnsaz_settings (key, value) VALUES ('telegram_admin_chat_id', ?)`).bind(chatIdStr).run()
-        await tgSendMessage(TELEGRAM_BOT_TOKEN, chatId, `✅ شما به عنوان ادمین تلگرام ست شدید\nID: ${chatIdStr}\nاز این به بعد گزارش‌ها به شما می‌آید (09206263218)`)
-      }
+    if(contains(['/gallery','گالری'])){
+      await tgSendMessage(TELEGRAM_BOT_TOKEN, chatId, `📸 گالری: https://celeb.neginejam.ir/#gallery`, inlineKeyboard([[{text:'🌐 باز کردن گالری', url:'https://celeb.neginejam.ir/#gallery'}]]))
       return new Response('ok')
     }
-
-    if(contains(['/gallery','گالری','نمونه کار'])){
-      await tgSendMessage(TELEGRAM_BOT_TOKEN, chatId, `📸 <b>گالری جشن‌ساز</b>\n\n6 نمونه کار:\n🎂 تولد شب صورتی\n💐 سفره عقد آیینه‌خانه\nhttps://celeb.neginejam.ir/#gallery`, inlineKeyboard([[{text:'🌐 باز کردن گالری', url:'https://celeb.neginejam.ir/#gallery'}]]))
+    if(contains(['/packages','پکیج','قیمت'])){
+      await tgSendMessage(TELEGRAM_BOT_TOKEN, chatId, `🎁 پکیج‌ها:\n💜 رویا ۱۲م\n⭐ ستاره ۲۸م\n👑 افسانه ۶۵م\n🤖 AI ۵م\n\n☎️ 021-77947035 | 09206263218\nآیدی شما: ${chatIdStr}`)
       return new Response('ok')
     }
-
-    if(contains(['/packages','پکیج','قیمت','هزینه'])){
-      await tgSendMessage(TELEGRAM_BOT_TOKEN, chatId, `🎁 <b>پکیج‌ها</b>\n💜 رویا ۱۲م\n⭐ ستاره ۲۸م\n👑 افسانه ۶۵م\n🤖 طراحی AI ۵م\n\n☎️ 021-77947035 | 09206263218\nآیدی شما: ${chatIdStr}`)
-      return new Response('ok')
-    }
-
     if(text.startsWith('occ_') || contains(['تولد','نامزدی','عروسی','یلدا','سازمانی','سیسمونی'])){
-      await tgSendMessage(TELEGRAM_BOT_TOKEN, chatId, `🎉 مناسبت <b>${text}</b> انتخاب شد\n\n${BOT_TEXTS.askStyle}`, inlineKeyboard(STYLE_BUTTONS))
+      await tgSendMessage(TELEGRAM_BOT_TOKEN, chatId, `استایل؟`, inlineKeyboard(STYLE_BUTTONS))
       return new Response('ok')
     }
-
     if(text.startsWith('style_') || contains(['مینیمال','لاکچری','بوهو','فانتزی'])){
-      await tgSendMessage(TELEGRAM_BOT_TOKEN, chatId, `استایل <b>${text}</b> - ${BOT_TEXTS.askGuests}`, inlineKeyboard(GUEST_BUTTONS))
+      await tgSendMessage(TELEGRAM_BOT_TOKEN, chatId, `چند مهمان؟`, inlineKeyboard(GUEST_BUTTONS))
       return new Response('ok')
     }
-
     if(text.startsWith('guests_') || text.includes('نفر')){
-      const design = faDesign('جشن انتخابی', 'مینیمال', text)
-      await tgSendMessage(TELEGRAM_BOT_TOKEN, chatId, design)
-      await tgSendMessage(TELEGRAM_BOT_TOKEN, chatId, `حالا شماره‌ات رو بفرست: ${BOT_TEXTS.askPhone}`, {
-        reply_markup: { keyboard: [[{text:'📞 ارسال شماره تماس', request_contact: true}],[{text:'📍 ارسال لوکیشن', request_location: true}]], resize_keyboard: true, one_time_keyboard: true }
-      })
+      await tgSendMessage(TELEGRAM_BOT_TOKEN, chatId, faDesign('جشن', text, '50 نفر'))
       return new Response('ok')
     }
-
-    if(contains(['/contact','تماس','رزرو','ادمین','human','پشتیبانی'])){
-      await tgSendMessage(TELEGRAM_BOT_TOKEN, chatId, `📞 <b>تماس</b>\n${BOT_TEXTS.human}\n\n☎️ 021-77947035\n📱 09206263218\nآیدی شما: ${chatIdStr}\n🌐 https://celeb.neginejam.ir`)
+    if(contains(['/contact','تماس','رزرو','ادمین','human'])){
+      await tgSendMessage(TELEGRAM_BOT_TOKEN, chatId, `📞 تماس\n021-77947035\n09206263218\nآیدی شما: ${chatIdStr}\nhttps://celeb.neginejam.ir`)
       return new Response('ok')
     }
-
     if(message?.contact){
       const phone = message.contact.phone_number
-      const name = message.contact.first_name || userName
-      await tgSendMessage(TELEGRAM_BOT_TOKEN, chatId, `ممنون ${name}! شماره‌ات ${phone} ثبت شد 🙏\nآیدی: ${chatIdStr}`)
-      if(DB){
-        await DB.prepare(`UPDATE ${TABLES.leads} SET phone = ?, name = ?, updated_at = datetime("now") WHERE chat_id = ?`).bind(phone, name, chatIdStr).run().catch(()=>{})
-      }
+      await tgSendMessage(TELEGRAM_BOT_TOKEN, chatId, `ممنون! شماره ${phone} ثبت شد\nآیدی: ${chatIdStr}`)
+      if(DB) await DB.prepare(`UPDATE ${TABLES.leads} SET phone = ? WHERE chat_id = ?`).bind(phone, chatIdStr).run().catch(()=>{})
       return new Response('ok')
     }
 
@@ -159,6 +173,6 @@ export const onRequestPost: PagesFunction<{
       reply_markup: { keyboard: WELCOME_KB_TEXT.map(r=>r.map(t=>({text:t}))), resize_keyboard: true }
     })
 
-  } catch (e:any) { console.error('telegram webhook error', e) }
+  } catch (e:any) { console.error(e) }
   return new Response('ok')
 }

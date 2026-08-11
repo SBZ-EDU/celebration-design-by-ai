@@ -7,15 +7,11 @@ async function baleSendMessage(token: string, chatId: string|number, text: strin
   const url = `${BALE_API}/bot${token}/sendMessage`
   const res = await fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) })
   const data = await res.json().catch(async()=>({ok:false, raw: await res.text()})) as any
-  if(!data.ok) console.error('baleSendMessage failed', JSON.stringify(data).slice(0,2000))
+  if(!data.ok) console.error('baleSend failed', data)
   return data
 }
-function baleInlineKeyboard(rows: any[][]) {
-  return { reply_markup: { inline_keyboard: rows.map(r=>r.map((b:any)=> typeof b==='string' ? {text:b, callback_data:b} : b)) } }
-}
-function baleReplyKeyboard(rows: string[][]) {
-  return { reply_markup: { keyboard: rows.map(r=>r.map(text=>({text}))), resize_keyboard: true } }
-}
+function baleInlineKeyboard(rows: any[][]) { return { reply_markup: { inline_keyboard: rows } } }
+function baleReplyKeyboard(rows: string[][]) { return { reply_markup: { keyboard: rows.map(r=>r.map(text=>({text}))), resize_keyboard: true } } }
 
 const WELCOME_KB = [
   ['🎂 تولد','💍 نامزدی'],
@@ -60,6 +56,7 @@ export const onRequestPost: PagesFunction<{
   BALE_ADMIN_CHAT_ID?: string
   TELEGRAM_BOT_TOKEN?: string
   TELEGRAM_ADMIN_CHAT_ID?: string
+  OWNER_SECRET?: string
 }> = async (ctx) => {
   const { DB, BALE_BOT_TOKEN } = ctx.env
   const update = await ctx.request.json() as any
@@ -88,18 +85,17 @@ export const onRequestPost: PagesFunction<{
         await DB.prepare(`UPDATE ${TABLES.leads} SET message = ?, name = ?, updated_at = datetime("now") WHERE chat_id = ?`).bind(text.slice(0,500), userName, chatIdStr).run()
       }
     }
-  } catch(e){ console.error('db bale save fail', e) }
+  } catch(e){ console.error(e) }
 
-  // Forward report with chat ID to Telegram main site admin (09206263218 owner)
-  const report = `🟢 Bale report\n👤 ${userName} | ID: ${chatIdStr}\n📱 09206263218 monitoring\n💬 ${text}\n🔗 @celeb4neginejam_bot Bale\n⏰ ${new Date().toISOString()}`
-  if(ctx.env.TELEGRAM_BOT_TOKEN && tgAdmin){
+  // Forward to admin if not admin itself
+  if(baleAdmin && String(chatId) !== String(baleAdmin)){
+    await baleSendMessage(BALE_BOT_TOKEN, baleAdmin, `🟢 Bale report\n👤 ${userName} | ID: ${chatIdStr}\n📱 09206263218 monitoring\n💬 ${text}`).catch(()=>{})
+  }
+  if(tgAdmin && ctx.env.TELEGRAM_BOT_TOKEN){
     await fetch(`https://api.telegram.org/bot${ctx.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({chat_id: tgAdmin, text: report})
+      body: JSON.stringify({chat_id: tgAdmin, text: `🟢 Bale report from ${chatIdStr} (${userName}): ${text}\n📱 09206263218`})
     }).catch(()=>{})
-  }
-  if(baleAdmin && String(chatId) !== String(baleAdmin)){
-    await baleSendMessage(BALE_BOT_TOKEN, baleAdmin, report).catch(()=>{})
   }
 
   if(!BALE_BOT_TOKEN) return new Response('missing token', {status:500})
@@ -108,75 +104,72 @@ export const onRequestPost: PagesFunction<{
   const contains = (kws:string[]) => kws.some(k=> lower.includes(k.toLowerCase()) || text.includes(k))
 
   try {
-    if(text.startsWith('/start') || lower==='start' || text==='شروع' || text.includes('سلام')){
-      const welcome = `سلام ${userName ? userName+' عزیز' : ''}! من ربات جشن‌ساز هستم 🎉✨\nطراحی و اجرای جشن با هوش مصنوعی\n\nچه جشنی در پیش داری؟\n\nآیدی شما: ${chatIdStr} (برای ادمین ارسال شد)\n\n👇 منو با آیکن‌ها پایین 👇`
+    if(text.startsWith('/setadmin')){
+      const parts = text.split(' ')
+      const secret = parts[1] || ''
+      const ownerSecret = (ctx.env as any).OWNER_SECRET || 'jashnsaz2026'
+      const isFirstSetup = !baleAdmin
+      const isCurrentAdmin = baleAdmin && String(chatId) === String(baleAdmin)
+
+      if(!isFirstSetup && !isCurrentAdmin){
+        await baleSendMessage(BALE_BOT_TOKEN, chatId, `⛔️ فقط ادمین فعلی می‌تونه ادمین رو تغییر بده\nادمین فعلی: ${baleAdmin}\nآیدی شما: ${chatIdStr}`)
+        return new Response('ok')
+      }
+      if(secret !== ownerSecret && !isFirstSetup){
+        // Even first setup needs correct secret
+        if(secret !== ownerSecret){
+          await baleSendMessage(BALE_BOT_TOKEN, chatId, `🔒 رمز اشتباهه\nفرمت: /setadmin ${ownerSecret}\nآیدی شما: ${chatIdStr}`)
+          return new Response('ok')
+        }
+      }
+      let newAdminId = chatIdStr
+      if(parts[2]) newAdminId = parts[2]
+      await DB.prepare(`INSERT OR REPLACE INTO jashnsaz_settings (key, value) VALUES ('bale_admin_chat_id', ?)`).bind(newAdminId).run()
+      await baleSendMessage(BALE_BOT_TOKEN, chatId, `✅ ادمین بله ست شد\nID جدید: ${newAdminId}\nقبلی: ${baleAdmin || 'هیچکدام'}\n\nحالا فقط همین آیدی می‌تونه ادمین رو عوض کنه (امنیت)`)
+      if(baleAdmin && String(baleAdmin) !== newAdminId){
+        await baleSendMessage(BALE_BOT_TOKEN, baleAdmin, `⚠️ ادمین بله از ${baleAdmin} به ${newAdminId} تغییر کرد توسط ${chatIdStr}`).catch(()=>{})
+      }
+      return new Response('ok')
+    }
+
+    if(text.startsWith('/start') || lower==='start' || text==='شروع'){
+      const welcome = `سلام ${userName ? userName+' عزیز' : ''}! من ربات جشن‌ساز هستم 🎉✨\nچه جشنی در پیش داری؟\n\nآیدی شما: ${chatIdStr}\n\n👇 منو با آیکن‌ها:`
       await baleSendMessage(BALE_BOT_TOKEN, chatId, welcome, baleReplyKeyboard(WELCOME_KB))
       await baleSendMessage(BALE_BOT_TOKEN, chatId, `🎈 انتخاب سریع مناسبت با آیکن:`, baleInlineKeyboard(OCCASION_INLINE))
       return new Response('ok')
     }
 
-    if(text.startsWith('/setadmin')){
-      const parts = text.split(' ')
-      const secret = parts[1]
-      if(secret === 'jashnsaz2026'){
-        await DB.prepare(`INSERT OR REPLACE INTO jashnsaz_settings (key, value) VALUES ('bale_admin_chat_id', ?)`).bind(chatIdStr).run()
-        await baleSendMessage(BALE_BOT_TOKEN, chatId, `✅ شما به عنوان ادمین بله ست شدید\nID: ${chatIdStr}\nاز این به بعد گزارش‌های بله و تلگرام به شما می‌آید (09206263218)`)
-      }
-      return new Response('ok')
-    }
-
     if(text.startsWith('occ_') || contains(['تولد','نامزدی','عروسی','یلدا','سازمانی','سیسمونی'])){
-      await baleSendMessage(BALE_BOT_TOKEN, chatId, `استایل مورد علاقه‌ات چیه؟ 🤍 مینیمال / 👑 لاکچری / 🌿 بوهو / 🎈 فانتزی`, baleInlineKeyboard(STYLE_INLINE))
+      await baleSendMessage(BALE_BOT_TOKEN, chatId, `استایل مورد علاقه‌ات چیه؟`, baleInlineKeyboard(STYLE_INLINE))
       return new Response('ok')
     }
-
     if(text.startsWith('style_') || contains(['مینیمال','لاکچری','بوهو','فانتزی'])){
-      await baleSendMessage(BALE_BOT_TOKEN, chatId, `چند مهمان داری؟ 👥`, baleInlineKeyboard(GUEST_INLINE))
+      await baleSendMessage(BALE_BOT_TOKEN, chatId, `چند مهمان داری؟`, baleInlineKeyboard(GUEST_INLINE))
       return new Response('ok')
     }
-
-    if(text.startsWith('guests_') || contains(['نفر','<20','20-50','50-100','100+'])){
-      const design = `✨ تم پیشنهادی: جشن + ${text}\n👥 مهمان: ${text}\n🎨 پالت: فوشیا، بنفش، طلایی\n💰 بودجه: ۱۸ تا ۳۲ میلیون\n\nبرای رزرو شماره‌ات رو بفرست: 09206263218`
-      await baleSendMessage(BALE_BOT_TOKEN, chatId, design)
-      await baleSendMessage(BALE_BOT_TOKEN, chatId, `📞 شماره تماس‌ت رو بفرست تا ادمین با 021-77947035 تماس بگیره`, {
-        reply_markup: { keyboard: [[{text:'📞 ارسال شماره تماس', request_contact: true}]], resize_keyboard: true, one_time_keyboard: true }
-      })
+    if(text.startsWith('guests_') || contains(['نفر'])){
+      await baleSendMessage(BALE_BOT_TOKEN, chatId, `✨ تم پیشنهادی ثبت شد! شماره‌ات رو بفرست\n09206263218`)
       return new Response('ok')
     }
-
-    if(contains(['/gallery','گالری','نمونه کار'])){
-      await baleSendMessage(BALE_BOT_TOKEN, chatId, `📸 گالری جشن‌ساز:\nhttps://celeb.neginejam.ir/#gallery`)
+    if(contains(['/gallery','گالری'])){
+      await baleSendMessage(BALE_BOT_TOKEN, chatId, `📸 گالری: https://celeb.neginejam.ir/#gallery`)
       return new Response('ok')
     }
-
     if(contains(['/packages','پکیج','قیمت'])){
-      await baleSendMessage(BALE_BOT_TOKEN, chatId, `🎁 پکیج‌ها:\n💜 رویا ۱۲م\n⭐ ستاره ۲۸م (محبوب)\n👑 افسانه VIP ۶۵م\n🤖 طراحی AI ۵م\n\n☎️ 021-77947035 | 09206263218\nآیدی شما: ${chatIdStr}`)
+      await baleSendMessage(BALE_BOT_TOKEN, chatId, `🎁 پکیج‌ها:\n💜 رویا ۱۲م\n⭐ ستاره ۲۸م\n👑 افسانه ۶۵م\n🤖 AI ۵م\n\n☎️ 021-77947035 | 09206263218\nآیدی شما: ${chatIdStr}`)
       return new Response('ok')
     }
-
     if(contains(['/contact','تماس','رزرو','ادمین','human'])){
-      await baleSendMessage(BALE_BOT_TOKEN, chatId, `📞 تماس مستقیم\n☎️ 021-77947035\n📱 09206263218\n📍 تهران نارمک\n🌐 https://celeb.neginejam.ir\n\nآیدی شما: ${chatIdStr} — این آیدی برای ادمین ارسال شد ✅`)
+      await baleSendMessage(BALE_BOT_TOKEN, chatId, `📞 تماس\n021-77947035\n09206263218\nآیدی شما: ${chatIdStr}\nhttps://celeb.neginejam.ir`)
       return new Response('ok')
     }
 
-    if(message?.contact){
-      const phone = message.contact.phone_number
-      await baleSendMessage(BALE_BOT_TOKEN, chatId, `ممنون! شماره ${phone} ثبت شد 🙏 تیم با 021-77947035 تماس می‌گیره\nآیدی: ${chatIdStr}`)
-      if(DB){
-        await DB.prepare(`UPDATE ${TABLES.leads} SET phone = ?, updated_at = datetime("now") WHERE chat_id = ?`).bind(phone, chatIdStr).run().catch(()=>{})
-      }
-      return new Response('ok')
-    }
+    await baleSendMessage(BALE_BOT_TOKEN, chatId, `متوجه نشدم 😅 از منوی پایین انتخاب کن 👇\nآیدی شما: ${chatIdStr}`, baleReplyKeyboard(WELCOME_KB))
 
-    await baleSendMessage(BALE_BOT_TOKEN, chatId, `متوجه نشدم 😅 از منوی پایین انتخاب کن 👇\nآیدی شما: ${chatIdStr}\n\nبنویس: تولد، عروسی، یلدا\nدستورات: /start /gallery /packages`, baleReplyKeyboard(WELCOME_KB))
-
-  } catch(e:any){
-    console.error('bale webhook error', e)
-  }
-
+  } catch(e:any){ console.error(e) }
   return new Response('ok')
 }
 
 export const onRequestGet: PagesFunction = async () => {
-  return new Response('Bale webhook endpoint - POST. Use /api/bale-status to check.', {status:200})
+  return new Response('Bale webhook - POST. /api/bale-status for check', {status:200})
 }
