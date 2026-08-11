@@ -42,5 +42,10 @@ export const apiCreateLead = (payload: any) => req('/api/leads', {method:'POST',
 export const apiUpdateLead = (id: string, payload: any) => req(`/api/leads/${id}`, {method:'PATCH', body: JSON.stringify(payload)})
 export const apiDeleteLead = (id: string) => req(`/api/leads/${id}`, {method:'DELETE'})
 
+// Users (admin only)
+export const apiGetUsers = () => req('/api/users')
+export const apiUpdateUser = (id: string, payload: any) => req(`/api/users/${id}`, {method:'PATCH', body: JSON.stringify(payload)})
+export const apiDeleteUser = (id: string) => req(`/api/users/${id}`, {method:'DELETE'})
+
 // Contact (old endpoint still works)
 export const apiContact = (payload: any) => req('/api/contact', {method:'POST', body: JSON.stringify(payload)})

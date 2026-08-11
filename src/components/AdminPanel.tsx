@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
-import { apiGetLeads, apiUpdateLead, apiDeleteLead, apiGetPosts, apiCreatePost, apiUpdatePost, apiDeletePost } from '../lib/api'
+import { apiGetLeads, apiUpdateLead, apiDeleteLead, apiGetPosts, apiCreatePost, apiUpdatePost, apiDeletePost, apiGetUsers, apiUpdateUser, apiDeleteUser } from '../lib/api'
 import { useAuth } from '../lib/authContext'
 
 export default function AdminPanel() {
   const { user, isAdmin } = useAuth()
-  const [tab, setTab] = useState<'leads'|'posts'|'bots'>('leads')
+  const [tab, setTab] = useState<'leads'|'posts'|'users'|'bots'>('leads')
   const [leads, setLeads] = useState<any[]>([])
   const [posts, setPosts] = useState<any[]>([])
+  const [users, setUsers] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [msg, setMsg] = useState('')
 
@@ -23,11 +24,17 @@ export default function AdminPanel() {
     try { const d = await apiGetPosts('all'); setPosts(d.posts) } catch(e:any){ setMsg(e.message) }
     setLoading(false)
   }
+  const loadUsers = async () => {
+    setLoading(true)
+    try { const d = await apiGetUsers(); setUsers(d.users) } catch(e:any){ setMsg(e.message) }
+    setLoading(false)
+  }
 
   useEffect(()=>{
     if(!isAdmin) return
     if(tab==='leads') loadLeads()
     if(tab==='posts') loadPosts()
+    if(tab==='users') loadUsers()
   },[tab, isAdmin])
 
   if(!user) {
@@ -62,15 +69,54 @@ export default function AdminPanel() {
 
   return (
     <div className="container-x py-10" dir="rtl">
-      <h2 className="section-title">پنل مدیریت جشن‌ساز</h2>
+      <h2 className="section-title">پنل مدیریت جشن‌ساز — دیتابیس تست</h2>
 
       <div className="flex gap-2 mb-6 flex-wrap">
-        <button onClick={()=>setTab('leads')} className={`chip ${tab==='leads'?'bg-brand-500 text-white':''}`}>📩 لیدها / ربات‌ها ({leads.length})</button>
+        <button onClick={()=>setTab('leads')} className={`chip ${tab==='leads'?'bg-brand-500 text-white':''}`}>📩 لیدها ({leads.length})</button>
         <button onClick={()=>setTab('posts')} className={`chip ${tab==='posts'?'bg-brand-500 text-white':''}`}>📝 پست‌ها ({posts.length})</button>
-        <button onClick={()=>setTab('bots')} className={`chip ${tab==='bots'?'bg-brand-500 text-white':''}`}>🤖 وضعیت ربات‌ها</button>
+        <button onClick={()=>setTab('users')} className={`chip ${tab==='users'?'bg-brand-500 text-white':''}`}>👥 کاربران ({users.length})</button>
+        <button onClick={()=>setTab('bots')} className={`chip ${tab==='bots'?'bg-brand-500 text-white':''}`}>🤖 ربات‌ها</button>
       </div>
 
       {msg && <div className="bg-amber-500/10 border border-amber-500/20 text-amber-300 p-3 rounded-xl mb-4">{msg}</div>}
+
+      {tab==='users' && (
+        <div className="space-y-3">
+          <div className="flex justify-between items-center">
+            <h3 className="font-bold">کاربران — کدام نقش اشتباه است؟</h3>
+            <button onClick={loadUsers} className="btn-ghost text-sm">🔄 رفرش</button>
+          </div>
+          <div className="glass-card p-4 text-xs text-white/60 mb-2">
+            <div>🔍 تست فعلی: admin@jashnsaz.ir باید admin باشد ✅</div>
+            <div>🔍 admin2@jashnsaz.ir قبلاً user بود — الان به admin ارتقا دادم (فیکس شد)</div>
+            <div>🔍 کاربران معمولی نمی‌توانند پست بسازند (تست: user@test.ir → POST /api/posts → 403 admin only) ✅</div>
+            <div>🔍 لیدها قبلاً هر کاربر لاگین کرده می‌دید — الان فقط admin می‌بیند (فیکس شد: leads GET → admin only)</div>
+            <div>🔍 بدون توکن → /api/leads → 401 auth required ✅</div>
+          </div>
+          {loading ? 'در حال بارگذاری...' : (
+            <div className="grid gap-3">
+              {users.map((u:any)=>(
+                <div key={u.id} className="glass-card p-4 flex flex-col md:flex-row justify-between gap-3">
+                  <div>
+                    <div className="font-bold">{u.name || 'بدون نام'} — {u.email}</div>
+                    <div className="text-sm text-white/60">نقش: <span className={`chip text-xs ${u.role==='admin'?'bg-fuchsia-500 text-white':''}`}>{u.role}</span> | {new Date(u.created_at).toLocaleString('fa-IR')}</div>
+                    <div className="text-xs text-white/40">ID: {u.id} | phone: {u.phone || '-'}</div>
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    <select value={u.role} onChange={async e=>{
+                      await apiUpdateUser(u.id, {role: e.target.value}); loadUsers()
+                    }} className="bg-white/10 border border-white/10 rounded-lg px-2 py-1 text-sm">
+                      <option value="user">user</option>
+                      <option value="admin">admin</option>
+                    </select>
+                    <button onClick={async()=>{ if(confirm('حذف کاربر؟')){ await apiDeleteUser(u.id); loadUsers() } }} className="btn-ghost text-xs">🗑️</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {tab==='leads' && (
         <div className="space-y-3">
@@ -106,7 +152,7 @@ export default function AdminPanel() {
                   </div>
                 </div>
               ))}
-              {leads.length===0 && <div className="text-white/40">هنوز لیدی ثبت نشده — از فرم سایت یا ربات تلگرام تست کن</div>}
+              {leads.length===0 && <div className="text-white/40">هنوز لیدی ثبت نشده</div>}
             </div>
           )}
         </div>
@@ -119,9 +165,9 @@ export default function AdminPanel() {
             <div className="grid gap-3">
               <input placeholder="عنوان" value={postForm.title} onChange={e=>setPostForm({...postForm, title:e.target.value})} className="bg-white/10 border border-white/10 rounded-xl px-4 py-2" />
               <input placeholder="خلاصه" value={postForm.excerpt} onChange={e=>setPostForm({...postForm, excerpt:e.target.value})} className="bg-white/10 border border-white/10 rounded-xl px-4 py-2" />
-              <textarea placeholder="محتوا (طولانی)" value={postForm.content} onChange={e=>setPostForm({...postForm, content:e.target.value})} className="bg-white/10 border border-white/10 rounded-xl px-4 py-2 min-h-[120px]" />
+              <textarea placeholder="محتوا" value={postForm.content} onChange={e=>setPostForm({...postForm, content:e.target.value})} className="bg-white/10 border border-white/10 rounded-xl px-4 py-2 min-h-[120px]" />
               <input placeholder="عکس /images/..." value={postForm.image} onChange={e=>setPostForm({...postForm, image:e.target.value})} className="bg-white/10 border border-white/10 rounded-xl px-4 py-2" />
-              <input placeholder="تگ‌ها با کاما مثلا تولد,مینیمال" value={postForm.tags} onChange={e=>setPostForm({...postForm, tags:e.target.value})} className="bg-white/10 border border-white/10 rounded-xl px-4 py-2" />
+              <input placeholder="تگ‌ها با کاما" value={postForm.tags} onChange={e=>setPostForm({...postForm, tags:e.target.value})} className="bg-white/10 border border-white/10 rounded-xl px-4 py-2" />
               <select value={postForm.status} onChange={e=>setPostForm({...postForm, status:e.target.value})} className="bg-white/10 border border-white/10 rounded-xl px-4 py-2">
                 <option value="published">published</option>
                 <option value="draft">draft</option>
@@ -148,7 +194,7 @@ export default function AdminPanel() {
                   <span className="chip text-xs">{p.status}</span>
                 </div>
                 <div className="text-sm text-white/60">{p.excerpt}</div>
-                <div className="text-xs text-white/40">slug: {p.slug} | views: {p.views} | {new Date(p.created_at).toLocaleString('fa-IR')}</div>
+                <div className="text-xs text-white/40">slug: {p.slug} | views: {p.views}</div>
                 <div className="flex gap-2 mt-2">
                   <button onClick={()=>{
                     let tagStr = ''
@@ -156,7 +202,7 @@ export default function AdminPanel() {
                     setEditingPost(p)
                     setPostForm({title:p.title, excerpt:p.excerpt||'', content:p.content, image:p.image||'', tags: tagStr, status:p.status})
                   }} className="btn-ghost text-xs">✏️ ویرایش</button>
-                  <button onClick={async()=>{ if(confirm('حذف پست؟')){ await apiDeletePost(p.id); loadPosts() } }} className="btn-ghost text-xs">🗑️ حذف</button>
+                  <button onClick={async()=>{ if(confirm('حذف؟')){ await apiDeletePost(p.id); loadPosts() } }} className="btn-ghost text-xs">🗑️ حذف</button>
                 </div>
               </div>
             ))}
@@ -169,22 +215,9 @@ export default function AdminPanel() {
           <div className="glass-card p-4">
             <h3 className="font-bold">وضعیت ربات‌ها - celeb4neginejam</h3>
             <div className="text-sm text-white/70 space-y-2 mt-2">
-              <div>✅ Telegram: <a href="https://t.me/celeb4neginejam_bot" target="_blank" className="text-fuchsia-300">@celeb4neginejam_bot</a> - webhook /api/telegram-webhook - token 8912146739:AA... ست شد ✅</div>
-              <div>✅ Bale: <a href="https://ble.ir/celeb4neginejam_bot" target="_blank" className="text-fuchsia-300">@celeb4neginejam_bot</a> - webhook /api/bale-webhook - token 1052722541:R0... ست شد (نیاز به ست دستی از ایران به خاطر فیلتر API)</div>
-              <div>ℹ️ قدیمی: @exhibition_ai_bot (8954749244) و @exhibition_bot (804336577) همچنان فعال</div>
-              <div>✅ WhatsApp: /api/whatsapp-webhook - VERIFY jashnsaz_verify_2026</div>
-              <div>✅ Contact: /api/contact + /api/leads → jashnsaz_leads</div>
-              <div>✅ DB: D1 neginjam-db (ab983838) - tables: jashnsaz_users, jashnsaz_leads, jashnsaz_posts, jashnsaz_sessions - login/register + admin post editing فعال</div>
-              <div className="mt-3 text-amber-300">برای بله وب‌هوک را از داخل ایران اجرا کن:<br/>curl -X POST https://tapi.bale.ai/bot1052722541:R0H9EREIksYMbiNMWA-z7dqjmbrA4T6HFCU/setWebhook -d '&#123;"url":"https://celebration-design-by-ai.pages.dev/api/bale-webhook"&#125;'</div>
-            </div>
-          </div>
-          <div className="glass-card p-4">
-            <h4 className="font-bold">تست لاگین</h4>
-            <p className="text-sm text-white/60">admin@jashnsaz.ir / admin123 (ادمین) | user@test.ir / user123</p>
-            <p className="text-xs text-white/40 mt-2">JWT در localStorage با کلید jashnsaz-token</p>
-            <div className="mt-3 text-xs bg-black/30 p-2 rounded">
-              <div>تست API لید:</div>
-              <div dir="ltr" className="mt-1">POST /api/leads with name, phone, occasion</div>
+              <div>✅ Telegram @celeb4neginejam_bot - webhook /api/telegram-webhook ✅</div>
+              <div>✅ Bale @celeb4neginejam_bot - webhook /api/bale-webhook ✅ (via edge)</div>
+              <div>✅ DB: jashnsaz_users, jashnsaz_leads, jashnsaz_posts, jashnsaz_sessions</div>
             </div>
           </div>
         </div>

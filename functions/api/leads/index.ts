@@ -7,8 +7,8 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
   const auth = ctx.request.headers.get('Authorization') || ''
   const token = auth.replace('Bearer ','').trim()
   const payload = await verifyJWT(token, ctx.env.JWT_SECRET || 'jashnsaz-secret')
-  if(!payload) return new Response(JSON.stringify({error:'auth required'}), {status:401, headers:{'Content-Type':'application/json'}})
-  const {results} = await ctx.env.DB.prepare(`SELECT * FROM ${TABLES.leads} ORDER BY created_at DESC LIMIT 100`).all()
+  if(!payload || payload.role !== 'admin') return new Response(JSON.stringify({error:'admin only - leads are private'}), {status:403, headers:{'Content-Type':'application/json'}})
+  const {results} = await ctx.env.DB.prepare(`SELECT * FROM ${TABLES.leads} ORDER BY created_at DESC LIMIT 200`).all()
   return new Response(JSON.stringify({ok:true, leads: results}), {headers:{'Content-Type':'application/json'}})
 }
 
